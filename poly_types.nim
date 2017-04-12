@@ -1,13 +1,15 @@
 type
-  PointF* = object
+  PointT* = object
     x*, y*: float64
-    
-  SegmentFill* = object
+
+  EdgeFill* = object
     above*, below*: bool
-    
-  Segment* = ref object
+
+  Edge* = ref object
     id*: int
-    start*, stop*: PointF
-    myFill*, otherFill*: SegmentFill
-    
-  Segments* = seq[Segment]
+    start*, stop*: PointT
+    myFill*, otherFill*: EdgeFill
+
+  Edges*   = seq[Edge]
+  Region*  = seq[PointT]
+  Regions* = seq[Region]

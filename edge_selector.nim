@@ -1,23 +1,23 @@
 import build_log, epsilon, poly_types
 
-proc indexBuilder(seg: Segment): int =
+proc indexBuilder(edge: Edge): int =
   result = 0
-  if seg.myFill.above: inc(result, 8)
-  if seg.myFill.below: inc(result, 4)
-  if seg.otherFill.above: inc(result, 2)
-  if seg.otherFill.below: inc result
+  if edge.myFill.above: inc(result, 8)
+  if edge.myFill.below: inc(result, 4)
+  if edge.otherFill.above: inc(result, 2)
+  if edge.otherFill.below: inc result
 
-proc segmentSelect(segments: Segments, selection: array[16, int], buildLog: BuildLog): Segments =
+proc selectEdge(edges: Edges, selection: array[16, int], buildLog: BuildLog): Edges =
   result = @[]
 
-  for seg in segments:
-    let index = seg.indexBuilder()
+  for edge in edges:
+    let index = edge.indexBuilder()
     if selection[index] != 0:
-      # copy the segment to the results, while also calculating the fill status
-      var res = Segment()
-      res.id = if buildLog != nil: buildLog.segmentId() else: -1
-      res.start = seg.start
-      res.stop  = seg.stop
+      # copy the edge to the results, while also calculating the fill status
+      var res = Edge()
+      res.id = if buildLog != nil: buildLog.edgeId() else: -1
+      res.start = edge.start
+      res.stop  = edge.stop
       res.myFill.above = selection[index] == 1  # 1 if filled above
       res.myFill.below = selection[index] == 2  # 2 if filled below
       res.otherFill.above = false
@@ -28,7 +28,7 @@ proc segmentSelect(segments: Segments, selection: array[16, int], buildLog: Buil
     buildLog.selected(result)
 
 # primary | secondary
-proc selectUnion*(segments: Segments, buildLog: BuildLog): Segments =
+proc selectUnion*(edges: Edges, buildLog: BuildLog): Edges =
   # above1 below1 above2 below2    Keep?               Value
   #    0      0      0      0   =>   no                  0
   #    0      0      0      1   =>   yes filled below    2
@@ -51,10 +51,10 @@ proc selectUnion*(segments: Segments, buildLog: BuildLog): Segments =
     2, 2, 0, 0,
     1, 0, 1, 0,
     0, 0, 0, 0]
-  result = segmentSelect(segments, selection, buildLog)
+  result = selectEdge(edges, selection, buildLog)
 
 # primary & secondary
-proc selectIntersect*(segments: Segments, buildLog: BuildLog): Segments =
+proc selectIntersect*(edges: Edges, buildLog: BuildLog): Edges =
   # above1 below1 above2 below2    Keep?               Value
   #    0      0      0      0   =>   no                  0
   #    0      0      0      1   =>   no                  0
@@ -77,10 +77,10 @@ proc selectIntersect*(segments: Segments, buildLog: BuildLog): Segments =
     0, 2, 0, 2,
     0, 0, 1, 1,
     0, 2, 1, 0]
-  result = segmentSelect(segments, selection, buildLog)
-  
+  result = selectEdge(edges, selection, buildLog)
+
 # primary - secondary
-proc selectDifference*(segments: Segments, buildLog: BuildLog): Segments =
+proc selectDifference*(edges: Edges, buildLog: BuildLog): Edges =
   # above1 below1 above2 below2    Keep?               Value
   #    0      0      0      0   =>   no                  0
   #    0      0      0      1   =>   no                  0
@@ -103,10 +103,10 @@ proc selectDifference*(segments: Segments, buildLog: BuildLog): Segments =
     2, 0, 2, 0,
     1, 1, 0, 0,
     0, 1, 2, 0]
-  result = segmentSelect(segments, selection, buildLog)
-  
-# secondary - primary  
-proc selectDifferenceRev*(segments: Segments, buildLog: BuildLog): Segments =
+  result = selectEdge(edges, selection, buildLog)
+
+# secondary - primary
+proc selectDifferenceRev*(edges: Edges, buildLog: BuildLog): Edges =
   # above1 below1 above2 below2    Keep?               Value
   #    0      0      0      0   =>   no                  0
   #    0      0      0      1   =>   yes filled below    2
@@ -129,10 +129,10 @@ proc selectDifferenceRev*(segments: Segments, buildLog: BuildLog): Segments =
     0, 0, 1, 1,
     0, 2, 0, 2,
     0, 0, 0, 0]
-  result = segmentSelect(segments, selection, buildLog)
-  
+  result = selectEdge(edges, selection, buildLog)
+
 # primary ^ secondary
-proc selectXor*(segments: Segments, buildLog: BuildLog): Segments =
+proc selectXor*(edges: Edges, buildLog: BuildLog): Edges =
   # above1 below1 above2 below2    Keep?               Value
   #    0      0      0      0   =>   no                  0
   #    0      0      0      1   =>   yes filled below    2
@@ -155,4 +155,4 @@ proc selectXor*(segments: Segments, buildLog: BuildLog): Segments =
     2, 0, 0, 1,
     1, 0, 0, 2,
     0, 1, 2, 0]
-  result = segmentSelect(segments, selection, buildLog)
+  result = selectEdge(edges, selection, buildLog)

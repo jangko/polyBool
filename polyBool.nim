@@ -1,4 +1,6 @@
-import build_log, epsilon, intersecter, segment_chainer, segment_selector, poly_types
+import build_log, epsilon, intersecter, edge_chainer, edge_selector, poly_types
+
+export poly_types
 
 type
   PolyBool* = object
@@ -26,18 +28,31 @@ proc epsilon*(self: var PolyBool): var Epsilon =
 # core API
 type
   Polygon* = object
-    regions: seq[seq[PointF]]
+    regions*: Regions
+    inverted*: bool
+
+  Segments = object
+    segments: Edges
     inverted: bool
 
-  Segmented* = object
-    segments: Segments
-    inverted: bool
-
-  Combined* = object
-    combined: Segments
+  Combined = object
+    combined: Edges
     inverted1, inverted2: bool
 
-proc segments*(self: PolyBool, poly: Polygon): Segmented =
+proc initPolygon*(inverted: bool = false): Polygon =
+  result.regions = @[]
+  result.inverted = inverted
+
+proc addRegion*(self: var Polygon) =
+  self.regions.add(newSeq[PointT]())
+
+proc addVertex*(self: var Polygon, v: PointT) =
+  self.regions[^1].add v
+
+proc addVertex*(self: var Polygon, x, y: float64) =
+  self.regions[^1].add(PointT(x: x, y: y))
+
+proc segments*(self: PolyBool, poly: Polygon): Segments =
   var api = intersecter(true, self.eps, self.log)
   for region in poly.regions:
     api.addRegion(region)
@@ -45,39 +60,38 @@ proc segments*(self: PolyBool, poly: Polygon): Segmented =
   result.segments = api.calculateSegmented(poly.inverted)
   result.inverted = poly.inverted
 
-proc combine*(self: PolyBool, segments1, segments2: Segmented): Combined =
+proc combine*(self: PolyBool, a, b: Segments): Combined =
   var api = intersecter(false, self.eps, self.log)
-  result.combined  = api.calculateCombined(segments1.segments, segments1.inverted,
-    segments2.segments, segments2.inverted)
-  result.inverted1 = segments1.inverted
-  result.inverted2 = segments2.inverted
+  result.combined  = api.calculateCombined(a.segments, a.inverted, b.segments, b.inverted)
+  result.inverted1 = a.inverted
+  result.inverted2 = b.inverted
 
-proc selectUnion*(self: PolyBool, combined: Combined): Segmented =
+proc selectUnion*(self: PolyBool, combined: Combined): Segments =
   result.segments = selectUnion(combined.combined, self.log)
   result.inverted = combined.inverted1 or combined.inverted2
 
-proc selectIntersect*(self: PolyBool, combined: Combined): Segmented =
+proc selectIntersect*(self: PolyBool, combined: Combined): Segments =
   result.segments = selectIntersect(combined.combined, self.log)
   result.inverted = combined.inverted1 and combined.inverted2
 
-proc selectDifference*(self: PolyBool, combined: Combined): Segmented =
+proc selectDifference*(self: PolyBool, combined: Combined): Segments =
   result.segments = selectDifference(combined.combined, self.log)
   result.inverted = combined.inverted1 and not combined.inverted2
 
-proc selectDifferenceRev*(self: PolyBool, combined: Combined): Segmented =
+proc selectDifferenceRev*(self: PolyBool, combined: Combined): Segments =
   result.segments = selectDifferenceRev(combined.combined, self.log)
   result.inverted = not combined.inverted1 and combined.inverted2
 
-proc selectXor*(self: PolyBool, combined: Combined): Segmented =
+proc selectXor*(self: PolyBool, combined: Combined): Segments =
   result.segments = selectXor(combined.combined, self.log)
   result.inverted = combined.inverted1 != combined.inverted2
 
-proc polygon*(self: PolyBool, segments: Segmented): Polygon =
-  result.regions = segmentChainer(segments.segments, self.eps, self.log)
-  result.inverted = segments.inverted
+proc polygon*(self: PolyBool, seg: Segments): Polygon =
+  result.regions  = segmentChainer(seg.segments, self.eps, self.log)
+  result.inverted = seg.inverted
 
 type
-  Selector = proc(self: PolyBool, combined: Combined): Segmented
+  Selector = proc(self: PolyBool, combined: Combined): Segments
 
 proc operate(self: PolyBool, poly1, poly2: Polygon, selector: Selector): Polygon =
   var
@@ -85,6 +99,7 @@ proc operate(self: PolyBool, poly1, poly2: Polygon, selector: Selector): Polygon
     seg2 = self.segments(poly2)
     comb = self.combine(seg1, seg2)
     seg3 = self.selector(comb)
+
   self.polygon(seg3)
 
 # helper functions for common operations

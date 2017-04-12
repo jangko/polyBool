@@ -1,32 +1,32 @@
-import linked_list, segment_chainer, epsilon, poly_types, build_log
+import linked_list, edge_chainer, epsilon, poly_types, build_log
 
 proc clipperError(msg: string): ref Exception =
   new(result)
   result.msg = msg
-  
+
 type
   IntersecterApi* = object
-    calculateCombined*: proc(segments1: Segments, inverted1: bool, segments2: Segments, inverted2: bool): Segments
-    addRegion*:  proc(region: seq[PointF])
-    calculateSegmented*: proc(inverted: bool): Segments
-  
+    calculateCombined*: proc(edge1: Edges, inverted1: bool, edge2: Edges, inverted2: bool): Edges
+    addRegion*:  proc(region: seq[PointT])
+    calculateSegmented*: proc(inverted: bool): Edges
+
 proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): IntersecterApi =
   # selfIntersection is true/false depending on the phase of the overall algorithm
-  
-  # segment creation
-  proc newSegment(start, stop: PointF): Segment =
+
+  # edge creation
+  proc newEdge(start, stop: PointT): Edge =
     new(result)
-    result.id = if buildLog != nil: buildLog.segmentId() else: -1
+    result.id = if buildLog != nil: buildLog.edgeId() else: -1
     result.start = start
     result.stop = stop
     result.myFill.above = false
     result.myFill.below = false
     result.otherFill.above = false
     result.otherFill.below = false
-    
-  proc copySegment(start, stop: PointF, seg: Segment): Segment =
+
+  proc copyEdge(start, stop: PointT, seg: Edge): Edge =
     new(result)
-    result.id = if buildLog != nil: buildLog.segmentId() else: -1
+    result.id = if buildLog != nil: buildLog.edgeId() else: -1
     result.start = start
     result.stop = stop
     result.myFill = seg.myFill
@@ -36,7 +36,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
   # event logic
   var eventRoot = initLinkedList[NodeData]()
 
-  proc eventCompare(p1_isStart: bool, p1_1, p1_2: PointF, p2_isStart: bool, p2_1, p2_2: PointF): int =
+  proc eventCompare(p1_isStart: bool, p1_1, p1_2: PointT, p2_isStart: bool, p2_1, p2_2: PointT): int =
     # compare the selected points first
     var comp = eps.pointsCompare(p1_1, p2_1)
     if comp != 0:
@@ -44,7 +44,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
     # the selected points are the same
 
     if eps.pointsSame(p1_2, p2_2): # if the non-selected points are the same too...
-      return 0 # then the segments are equal
+      return 0 # then the edges are equal
 
     if p1_isStart != p2_isStart: # if one is a start and the other isn't...
       return if p1_isStart: 1 else: -1 # favor the one that isn't the start
@@ -53,10 +53,10 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
     let aboveOrOnLine = eps.pointAboveOrOnLine(p1_2,
       if p2_isStart: p2_1 else: p2_2, # order matters
       if p2_isStart: p2_2 else: p2_1)
-    
+
     return if aboveOrOnLine: 1 else: -1
 
-  proc eventAdd(ev: Node, otherPt: PointF) =
+  proc eventAdd(ev: Node, otherPt: PointT) =
     proc insert(here: Node): bool =
       # should ev be inserted before here?
       var comp = eventCompare(ev.data.isStart, ev.data.pt, otherPt,
@@ -64,7 +64,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
       result = comp < 0
     eventRoot.insertBefore(ev, insert)
 
-  proc eventAddSegmentStart(seg: Segment, primary: bool): Node =
+  proc eventAddEdgeStart(seg: Edge, primary: bool): Node =
     var data: NodeData
     data.isStart = true
     data.pt  = seg.start
@@ -76,7 +76,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
     eventAdd(evStart, seg.stop)
     return evStart
 
-  proc eventAddSegmentEnd(evStart: Node, seg: Segment, primary: bool) =
+  proc eventAddEdgeEnd(evStart: Node, seg: Edge, primary: bool) =
     var data: NodeData
     data.isStart = false
     data.pt  = seg.stop
@@ -84,37 +84,37 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
     data.primary = primary
     data.other = evStart
     data.status = nil
-    
+
     var evEnd = newNode(data)
     evStart.data.other = evEnd
     eventAdd(evEnd, evStart.data.pt)
 
-  proc eventAddSegment(seg: Segment, primary: bool): Node =
-    var evStart = eventAddSegmentStart(seg, primary)
-    eventAddSegmentEnd(evStart, seg, primary)
+  proc eventAddEdge(seg: Edge, primary: bool): Node =
+    var evStart = eventAddEdgeStart(seg, primary)
+    eventAddEdgeEnd(evStart, seg, primary)
     evStart
 
-  proc eventUpdateEnd(ev: Node, stop: PointF) =
+  proc eventUpdateEnd(ev: Node, stop: PointT) =
     # slides an end backwards
     #   (start)------------(end)    to:
     #   (start)---(end)
 
     if buildLog != nil:
-      buildLog.segmentChop(ev.data.seg, stop)
-      
+      buildLog.edgeChop(ev.data.seg, stop)
+
     ev.data.other.remove()
     ev.data.seg.stop = stop
     ev.data.other.data.pt = stop
     eventAdd(ev.data.other, ev.data.pt)
 
-  proc eventDivide(ev: Node, pt: PointF): Node {.discardable} =
-    var ns = copySegment(pt, ev.data.seg.stop, ev.data.seg)
+  proc eventDivide(ev: Node, pt: PointT): Node {.discardable} =
+    var ns = copyEdge(pt, ev.data.seg.stop, ev.data.seg)
     eventUpdateEnd(ev, pt)
-    eventAddSegment(ns, ev.data.primary)
+    eventAddEdge(ns, ev.data.primary)
 
-  proc calculateF(primaryPolyInverted, secondaryPolyInverted: bool): Segments =
+  proc calculateF(primaryPolyInverted, secondaryPolyInverted: bool): Edges =
     # if selfIntersection is true then there is no secondary polygon, so that isn't used
-    
+
     # status logic
     var statusRoot = initLinkedList[NodeData]()
 
@@ -136,10 +136,10 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
         var comp = statusCompare(ev, here)
         return comp > 0
       statusRoot.findTransition(check)
-      
+
     proc checkIntersection(ev1, ev2: Node): Node =
-      # returns the segment equal to ev1, or false if nothing equal
-      
+      # returns the edge equal to ev1, or false if nothing equal
+
       let
         seg1 = ev1.data.seg
         seg2 = ev2.data.seg
@@ -154,22 +154,22 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
       var i = eps.linesIntersect(a1, a2, b1, b2)
 
       if i.alongA == NoIntersection and i.alongB == NoIntersection:
-        # segments are parallel or coincident
+        # edgess are parallel or coincident
 
-        # if points aren't collinear, then the segments are parallel, so no intersections
+        # if points aren't collinear, then the edges are parallel, so no intersections
         if not eps.pointsCollinear(a1, a2, b1):
           return nil
-          
-        # otherwise, segments are on top of each other somehow (aka coincident)
+
+        # otherwise, edges are on top of each other somehow (aka coincident)
 
         if eps.pointsSame(a1, b2) or eps.pointsSame(a2, b1):
-          return nil # segments touch at endpoints... no intersection
+          return nil # edges touch at endpoints... no intersection
 
         var a1_equ_b1 = eps.pointsSame(a1, b1)
         var a2_equ_b2 = eps.pointsSame(a2, b2)
 
         if a1_equ_b1 and a2_equ_b2:
-          return ev2 # segments are exactly equal
+          return ev2 # edges are exactly equal
 
         var a1_between = not a1_equ_b1 and eps.pointBetween(a1, b1, b2)
         var a2_between = not a2_equ_b2 and eps.pointBetween(a2, b1, b2)
@@ -230,7 +230,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
       return nil
 
     # main event loop
-    var segments = newSeq[Segment]()
+    var edges = newSeq[Edge]()
     while not eventRoot.isEmpty():
       var ev = eventRoot.getHead()
 
@@ -240,7 +240,7 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
       if ev.data.isStart:
 
         if buildLog != nil:
-          buildLog.segmentNew(ev.data.seg, ev.data.primary)
+          buildLog.edgeNew(ev.data.seg, ev.data.primary)
 
         var
           surrounding = statusFindSurrounding(ev)
@@ -275,20 +275,20 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
             else:
               toggle = ev.data.seg.myFill.above != ev.data.seg.myFill.below
 
-            # merge two segments that belong to the same polygon
-            # think of this as sandwiching two segments together, where `eve.seg` is
+            # merge two edges that belong to the same polygon
+            # think of this as sandwiching two edges together, where `eve.seg` is
             # the bottom -- this will cause the above fill flag to toggle
             if toggle:
               eve.data.seg.myFill.above = not eve.data.seg.myFill.above
           else:
-            # merge two segments that belong to different polygons
-            # each segment has distinct knowledge, so no special logic is needed
-            # note that this can only happen once per segment in this phase, because we
+            # merge two edges that belong to different polygons
+            # each edge has distinct knowledge, so no special logic is needed
+            # note that this can only happen once per edge in this phase, because we
             # are guaranteed that all self-intersections are gone
             eve.data.seg.otherFill = ev.data.seg.myFill
 
           if buildLog != nil:
-            buildLog.segmentUpdate(eve.data.seg)
+            buildLog.edgeUpdate(eve.data.seg)
 
           ev.data.other.remove()
           ev.remove()
@@ -303,9 +303,9 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
         # calculate fill flags
         if selfIntersection:
           var toggle: bool # are we a toggling edge?
-          if not ev.data.seg.myFill.below: # if we are a new segment...
+          if not ev.data.seg.myFill.below: # if we are a new edge...
             toggle = true # then we toggle
-          else: # we are a segment that has previous knowledge from a division
+          else: # we are a edge that has previous knowledge from a division
             toggle = ev.data.seg.myFill.above != ev.data.seg.myFill.below # calculate toggle
 
           # next, calculate whether we are filled below us
@@ -336,27 +336,27 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
               # inverted
               inside = if ev.data.primary: secondaryPolyInverted else: primaryPolyInverted
             else: # otherwise, something is below us
-              # so copy the below segment's other polygon's above
+              # so copy the below edge's other polygon's above
               if ev.data.primary == below.data.primary:
                 inside = below.data.seg.otherFill.above
               else:
                 inside = below.data.seg.myFill.above
             ev.data.seg.otherFill.above = inside
             ev.data.seg.otherFill.below = inside
-              
+
         if buildLog != nil:
           buildLog.status(
             ev.data.seg,
             if above != nil: above.data.seg else: nil,
             if below != nil: below.data.seg else: nil)
-          
+
         # insert the status and remember it for later removal
         ev.data.other.data.status = surrounding.insert(newNode(ev.data))
       else:
         var st = ev.data.status
 
         if st == nil:
-          raise clipperError("PolyBool: Zero-length segment detected; your epsilon is probably too small or too large")
+          raise clipperError("PolyBool: Zero-length edge detected; your epsilon is probably too small or too large")
 
         # removing the status will create two new adjacent edges, so we'll need to check
         # for those
@@ -370,13 +370,13 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
         st.remove()
 
         # if we've reached this point, we've calculated everything there is to know, so
-        # save the segment for reporting
+        # save the edge for reporting
         if not ev.data.primary:
           # make sure `seg.myFill` actually points to the primary polygon though
           var s = ev.data.seg.myFill
           ev.data.seg.myFill = ev.data.seg.otherFill
           ev.data.seg.otherFill = s
-        segments.add(ev.data.seg)
+        edges.add(ev.data.seg)
 
       # remove the event and continue
       eventRoot.getHead().remove()
@@ -384,44 +384,43 @@ proc intersecter*(selfIntersection: bool, eps: Epsilon, buildLog: BuildLog): Int
     if buildLog != nil:
       buildLog.done()
 
-    return segments
+    return edges
 
   # return the appropriate API depending on what we're doing
   if not selfIntersection:
-    # performing combination of polygons, so only deal with already-processed segments
+    # performing combination of polygons, so only deal with already-processed edges
     var res: IntersecterApi
-    res.calculateCombined = proc(segments1: Segments, inverted1: bool, segments2: Segments, inverted2: bool): Segments =
-      # segmentsX come from the self-intersection API, or this API
+    res.calculateCombined = proc(edge1: Edges, inverted1: bool, edge2: Edges, inverted2: bool): Edges =
+      # edgesX come from the self-intersection API, or this API
       # invertedX is whether we treat that list of segments as an inverted polygon or not
       # returns segments that can be used for further operations
-      for seg in segments1: discard eventAddSegment(seg, true)
-      for seg in segments2: discard eventAddSegment(seg, false)
+      for seg in edge1: discard eventAddEdge(seg, true)
+      for seg in edge2: discard eventAddEdge(seg, false)
       calculateF(inverted1, inverted2)
     return res
-    
+
   # otherwise, performing self-intersection, so deal with regions
   var res: IntersecterApi
-  res.addRegion = proc(region: seq[PointF]) =
+  res.addRegion = proc(region: seq[PointT]) =
     # regions are a list of points:
     #  [ [0, 0], [100, 0], [50, 100] ]
     # you can add multiple regions before running calculate
-    var 
-      pt1: PointF
+    var
+      pt1: PointT
       pt2 = region[region.len - 1]
     for i in 0.. <region.len:
       pt1 = pt2
       pt2 = region[i]
 
       var forward = eps.pointsCompare(pt1, pt2)
-      if forward == 0: # points are equal, so we have a zero-length segment
+      if forward == 0: # points are equal, so we have a zero-length edge
         continue # just skip it
 
-      var seg = newSegment(if forward < 0: pt1 else: pt2, if forward < 0: pt2 else: pt1)
-      discard eventAddSegment(seg, true)
+      var seg = newEdge(if forward < 0: pt1 else: pt2, if forward < 0: pt2 else: pt1)
+      discard eventAddEdge(seg, true)
 
-  res.calculateSegmented = proc(inverted: bool): Segments =
+  res.calculateSegmented = proc(inverted: bool): Edges =
     # is the polygon inverted?
-    # returns segments
+    # returns edges
     calculateF(inverted, false)
   result = res
-    
