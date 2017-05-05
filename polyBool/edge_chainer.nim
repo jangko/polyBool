@@ -1,3 +1,10 @@
+# Copyright (c) 2017 Andri Lim
+#
+# Distributed under the MIT license
+# (See accompanying file LICENSE.txt)
+#
+#-----------------------------------------
+
 import epsilon, build_log, poly_types, algorithm, sequtils
 
 type

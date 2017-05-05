@@ -1,3 +1,10 @@
+# Copyright (c) 2017 Andri Lim
+#
+# Distributed under the MIT license
+# (See accompanying file LICENSE.txt)
+#
+#-----------------------------------------
+
 import build_log, epsilon, poly_types
 
 proc indexBuilder(edge: Edge): int =

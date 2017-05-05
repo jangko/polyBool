@@ -1,3 +1,10 @@
+# Copyright (c) 2017 Andri Lim
+#
+# Distributed under the MIT license
+# (See accompanying file LICENSE.txt)
+#
+#-----------------------------------------
+
 import linked_list, edge_chainer, epsilon, poly_types, build_log
 
 proc clipperError(msg: string): ref Exception =
